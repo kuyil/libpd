@@ -4,3 +4,6 @@
 [submodule "pure-data"]
 	path = pure-data
 	url = git://git.code.sf.net/p/pure-data/pure-data
+[submodule "oboe"]
+	path = oboe
+	url = https://github.com/google/oboe

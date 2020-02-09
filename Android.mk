@@ -39,7 +39,6 @@ PD_CFLAGS := -DPD -DHAVE_UNISTD_H -DHAVE_LIBDL -DUSEAPI_DUMMY -w
 PD_JNI_CFLAGS := -Wno-int-to-pointer-cast -Wno-pointer-to-int-cast
 PD_LDLIBS := -ldl -latomic
 
-
 # Build libpd
 
 include $(CLEAR_VARS)
@@ -51,6 +50,17 @@ LOCAL_LDLIBS := $(PD_LDLIBS)
 LOCAL_SRC_FILES := $(PD_SRC_FILES)
 include $(BUILD_SHARED_LIBRARY)
 
+# Build OpenSL JNI binary
+
+include $(CLEAR_VARS)
+
+LOCAL_MODULE := pdnativeopensl
+LOCAL_C_INCLUDES := $(PD_C_INCLUDES) $(LOCAL_PATH)/jni
+LOCAL_CFLAGS := $(PD_JNI_CFLAGS)
+LOCAL_LDLIBS := -lOpenSLES -llog
+LOCAL_SRC_FILES := jni/opensl_stream/opensl_stream.c jni/z_jni_opensl.c
+LOCAL_SHARED_LIBRARIES := pd
+include $(BUILD_SHARED_LIBRARY)
 
 # Build plain JNI binary
 
@@ -64,16 +74,93 @@ LOCAL_SHARED_LIBRARIES := pd
 include $(BUILD_SHARED_LIBRARY)
 
 
-# Build OpenSL JNI binary
+# OBOE-specific flags
+
+OBOE_SRC_FILES := \
+    oboe/src/aaudio/AAudioLoader.cpp \
+    oboe/src/aaudio/AudioStreamAAudio.cpp \
+    oboe/src/common/AudioSourceCaller.cpp \
+    oboe/src/common/AudioStream.cpp \
+    oboe/src/common/AudioStreamBuilder.cpp \
+    oboe/src/common/DataConversionFlowGraph.cpp \
+    oboe/src/common/FilterAudioStream.cpp \
+    oboe/src/common/FixedBlockAdapter.cpp \
+    oboe/src/common/FixedBlockReader.cpp \
+    oboe/src/common/FixedBlockWriter.cpp \
+    oboe/src/common/LatencyTuner.cpp \
+    oboe/src/common/SourceFloatCaller.cpp \
+    oboe/src/common/SourceI16Caller.cpp \
+    oboe/src/common/Utilities.cpp \
+    oboe/src/common/QuirksManager.cpp \
+    oboe/src/fifo/FifoBuffer.cpp \
+    oboe/src/fifo/FifoController.cpp \
+    oboe/src/fifo/FifoControllerBase.cpp \
+    oboe/src/fifo/FifoControllerIndirect.cpp \
+    oboe/src/flowgraph/FlowGraphNode.cpp \
+    oboe/src/flowgraph/ClipToRange.cpp \
+    oboe/src/flowgraph/ManyToMultiConverter.cpp \
+    oboe/src/flowgraph/MonoToMultiConverter.cpp \
+    oboe/src/flowgraph/RampLinear.cpp \
+    oboe/src/flowgraph/SampleRateConverter.cpp \
+    oboe/src/flowgraph/SinkFloat.cpp \
+    oboe/src/flowgraph/SinkI16.cpp \
+    oboe/src/flowgraph/SinkI24.cpp \
+    oboe/src/flowgraph/SourceFloat.cpp \
+    oboe/src/flowgraph/SourceI16.cpp \
+    oboe/src/flowgraph/SourceI24.cpp \
+    oboe/src/flowgraph/resampler/IntegerRatio.cpp \
+    oboe/src/flowgraph/resampler/LinearResampler.cpp \
+    oboe/src/flowgraph/resampler/MultiChannelResampler.cpp \
+    oboe/src/flowgraph/resampler/PolyphaseResampler.cpp \
+    oboe/src/flowgraph/resampler/PolyphaseResamplerMono.cpp \
+    oboe/src/flowgraph/resampler/PolyphaseResamplerStereo.cpp \
+    oboe/src/flowgraph/resampler/SincResampler.cpp \
+    oboe/src/flowgraph/resampler/SincResamplerStereo.cpp \
+    oboe/src/opensles/AudioInputStreamOpenSLES.cpp \
+    oboe/src/opensles/AudioOutputStreamOpenSLES.cpp \
+    oboe/src/opensles/AudioStreamBuffered.cpp \
+    oboe/src/opensles/AudioStreamOpenSLES.cpp \
+    oboe/src/opensles/EngineOpenSLES.cpp \
+    oboe/src/opensles/OpenSLESUtilities.cpp \
+    oboe/src/opensles/OutputMixerOpenSLES.cpp \
+    oboe/src/common/StabilizedCallback.cpp \
+    oboe/src/common/Trace.cpp \
+    oboe/src/common/Version.cpp
+OBOE_C_INCLUDES := $(LOCAL_PATH)/oboe/src $(LOCAL_PATH)/oboe/include \
+OBOE_CPPFLAGS := -Wall -Wextra-semi -Wshadow -Wshadow-field -Ofast
+OBOE_LDLIBS := -llog -lOpenSLES
+
+OBOE_STREAM_SRC_FILES := \
+    jni/oboe_stream/oboe_stream.cpp  \
+    jni/z_jni_oboe.c  \
+    oboe/samples/LiveEffect/src/main/cpp/FullDuplexStream.cpp
+OBOE_STREAM_INCLUDES := \
+    $(PD_C_INCLUDES) \
+    $(LOCAL_PATH)/jni \
+    $(OBOE_C_INCLUDES) \
+    $(LOCAL_PATH)/oboe/samples/LiveEffect/src/main/cpp
+
+# Build oboe
 
 include $(CLEAR_VARS)
 
-LOCAL_MODULE := pdnativeopensl
-LOCAL_C_INCLUDES := $(PD_C_INCLUDES) $(LOCAL_PATH)/jni
+LOCAL_MODULE := oboe
+LOCAL_C_INCLUDES := $(OBOE_C_INCLUDES)
+LOCAL_CPPFLAGS := $(OBOE_CPPFLAGS)
+LOCAL_LDLIBS := $(OBOE_LDLIBS)
+LOCAL_SRC_FILES := $(OBOE_SRC_FILES)
+include $(BUILD_SHARED_LIBRARY)
+
+# Build Oboe JNI binary
+
+include $(CLEAR_VARS)
+
+LOCAL_MODULE := pdnativeoboe
+LOCAL_C_INCLUDES := $(OBOE_STREAM_INCLUDES)
 LOCAL_CFLAGS := $(PD_JNI_CFLAGS)
-LOCAL_LDLIBS := -lOpenSLES -llog
-LOCAL_SRC_FILES := jni/opensl_stream/opensl_stream.c jni/z_jni_opensl.c
-LOCAL_SHARED_LIBRARIES := pd
+LOCAL_LDLIBS := -llog
+LOCAL_SRC_FILES := $(OBOE_STREAM_SRC_FILES)
+LOCAL_SHARED_LIBRARIES := pd oboe
 include $(BUILD_SHARED_LIBRARY)
 
 

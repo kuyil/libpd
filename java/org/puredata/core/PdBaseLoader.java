@@ -48,6 +48,19 @@ public abstract class PdBaseLoader {
                 final int openslMinAndroidVersion = 9; // ref: https://developer.android.com/ndk/guides/audio/opensl/opensl-for-android
 
                 if (version >= oboeMinAndroidVersion) {
+                    // As per android documentation:
+                    // Old versions of Android had bugs in PackageManager and the dynamic
+                    // linker that caused installation, update, and loading of native libraries
+                    // to be unreliable. In particular, if your app targets a version of
+                    // Android earlier than Android 4.3 (Android API level 18), and you use
+                    // libc++_shared.so, you must load the shared library before
+                    // any other library that depends on it.
+                    // ref: https://developer.android.com/ndk/guides/cpp-support
+                    final int libcppSharedAutomaticLoadAndroidVersion = 18; 
+                    if (version < libcppSharedAutomaticLoadAndroidVersion) {
+                        System.loadLibrary("c++_shared");
+                    }
+
                     System.out.println("loading pdnativeoboe for Android");
                     System.loadLibrary("pdnativeoboe");
                 } else if (version >= openslMinAndroidVersion) {

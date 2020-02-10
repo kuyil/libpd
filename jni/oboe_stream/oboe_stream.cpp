@@ -216,7 +216,6 @@ public:
         .hostBlockSize = hostBlockSize
       };
       outputStream = std::make_unique<OutputStream>(outputParams, this);
-      setOutputStream(outputStream->getStream());
 
       auto inputParams = OneWayStreamParams {
         .sampleRate = sampleRate,
@@ -230,12 +229,15 @@ public:
   virtual ~DuplexStream() = default;
 
   oboe::Result open() override {
-    auto result = outputStream->open();
-    if (result != oboe::Result::OK) {
-      return result;
-    }
+    auto result = inputStream->open();
+    if (result != oboe::Result::OK) { return result; }
+    setInputStream(inputStream->getStream());
 
-    return inputStream->open();
+    result = outputStream->open();
+    if (result != oboe::Result::OK) { return result; }
+    setOutputStream(outputStream->getStream());
+
+    return result;
   }
 
   oboe::Result close() override {
@@ -246,22 +248,16 @@ public:
   }
 
   oboe::Result start() override {
-    auto inResult = inputStream->start();
-    auto outResult = outputStream->start();
+    return FullDuplexStream::start();
+  }
 
-    return (inResult != oboe::Result::OK) ? inResult : outResult;
+  oboe::Result stop() override {
+    return FullDuplexStream::stop();
   }
 
   oboe::Result pause() override {
     auto inResult = inputStream->pause();
     auto outResult = outputStream->pause();
-
-    return (inResult != oboe::Result::OK) ? inResult : outResult;
-  }
-
-  oboe::Result stop() override {
-    auto inResult = inputStream->stop();
-    auto outResult = outputStream->stop();
 
     return (inResult != oboe::Result::OK) ? inResult : outResult;
   }
@@ -273,8 +269,8 @@ public:
   oboe::DataCallbackResult
   onBothStreamsReady(const void *inputData, int numInputFrames, 
                      void *outputData, int numOutputFrames) override {
-    auto out = outputStream->getStream();
     auto in = inputStream->getStream();
+    auto out = outputStream->getStream();
     pdSyncProc(pdContext, 
         out->getSampleRate(),
         numInputFrames, // TODO: Is this correct, or should we send number of pd blocks?

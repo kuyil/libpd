@@ -60,9 +60,11 @@ public abstract class PdBaseLoader {
                     if (version < libcppSharedAutomaticLoadAndroidVersion) {
                         System.loadLibrary("c++_shared");
                     }
-
+                   
                     System.out.println("loading pdnativeoboe for Android");
                     System.loadLibrary("pdnativeoboe");
+                    // System.out.println("loading pdnativeopensl for Android");
+                    // System.loadLibrary("pdnativeopensl");
                 } else if (version >= openslMinAndroidVersion) {
                     System.out.println("loading pdnativeopensl for Android");
                     System.loadLibrary("pdnativeopensl");

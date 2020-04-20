@@ -29,14 +29,86 @@
 
 using namespace oboe;
 
-#define LOGI(...) \
-  __android_log_print(ANDROID_LOG_INFO, "oboe_stream", __VA_ARGS__)
-#define LOGW(...) \
-  __android_log_print(ANDROID_LOG_WARN, "oboe_stream", __VA_ARGS__)
-#define LOGE(...) \
-  __android_log_print(ANDROID_LOG_ERROR, "oboe_stream", __VA_ARGS__)
+#ifdef __ANDROID__
+#include <android/log.h>
 
-#define BLOCKS_PER_CALLBACK 2
+#if !defined(ALOG)
+
+// FOR TESTING ONLY: Always set this to 0 in production
+#define ENABLE_ANDROID_LOGGING_EVEN_IN_RELEASE 0
+
+// NDEBUG --> release
+#if defined(NDEBUG) && ENABLE_ANDROID_LOGGING_EVEN_IN_RELEASE == 0
+#define ALOG(...)
+#else
+#define ALOG __android_log_print
+#endif
+
+#define ALOGD(...) ALOG(ANDROID_LOG_DEBUG, "oboe_stream",  __VA_ARGS__)
+#define ALOGI(...) ALOG(ANDROID_LOG_INFO, "oboe_stream",  __VA_ARGS__)
+#define ALOGW(...) ALOG(ANDROID_LOG_WARN, "oboe_stream",  __VA_ARGS__)
+
+// Why are these not defined in terms of ALOG?
+// ERROR and FATAL level log entries should appear even in release.
+#define ALOGE(...) __android_log_print(ANDROID_LOG_ERROR, "oboe_stream", __VA_ARGS__)
+#define ALOGF(...) __android_log_print(ANDROID_LOG_FATAL, "oboe_stream", __VA_ARGS__)
+
+#endif //ALOG
+#endif // __ANDROID__
+
+#define BLOCKS_PER_CALLBACK 16
+
+void logStreamConfig(oboe::ManagedStream& stream) {
+    switch (stream->getDirection()) {
+        case oboe::Direction::Input:
+            ALOGD("direction = INPUT");
+            break;
+        case oboe::Direction::Output:
+            ALOGD("direction = OUTPUT");
+            break;
+    }
+
+    ALOGD("audio api = %s", stream->usesAAudio() ? "AAudio" : "OpenSL");
+    ALOGD("sample rate = %d", stream->getSampleRate());
+    ALOGD("channels = %d", stream->getChannelCount());
+
+    switch (stream->getFormat()) {
+        case oboe::AudioFormat::I16:
+            ALOGD("format = %s", "I16");
+            break;
+        case oboe::AudioFormat::Float:
+            ALOGD("format = %s", "Float");
+            break;
+        case oboe::AudioFormat::Unspecified:
+            ALOGD("format = %s", "Decided by oboe");
+            break;
+        default:
+        case oboe::AudioFormat::Invalid:
+            ALOGD("format = %s", "Invalid");
+            break;
+    }
+
+    switch (stream->getSampleRateConversionQuality()) {
+        case oboe::SampleRateConversionQuality::None: ALOGD("sample rate conversion quality: %s", "None"); break;
+        case oboe::SampleRateConversionQuality::Fastest: ALOGD("sample rate conversion quality: %s", "Fastest"); break;
+        case oboe::SampleRateConversionQuality::Low: ALOGD("sample rate conversion quality: %s", "Low"); break;
+        case oboe::SampleRateConversionQuality::Medium: ALOGD("sample rate conversion quality: %s", "Medium"); break;
+        case oboe::SampleRateConversionQuality::High: ALOGD("sample rate conversion quality: %s", "High"); break;
+        case oboe::SampleRateConversionQuality::Best: ALOGD("sample rate conversion quality: %s", "Best"); break;
+    }
+
+    switch (stream->getPerformanceMode()) {
+        case oboe::PerformanceMode::None: ALOGD("performance mode = %s", "None"); break;
+        case oboe::PerformanceMode::PowerSaving: ALOGD("performance mode = %s", "PowerSaving"); break;
+        case oboe::PerformanceMode::LowLatency: ALOGD("performance mode = %s", "LowLatency"); break;
+    }
+
+    ALOGD("buffer capacity = %d frames", stream->getBufferCapacityInFrames());
+    ALOGD("buffer size = %d frames", stream->getBufferSizeInFrames());
+    ALOGD("frames per burst = %d", stream->getFramesPerBurst());
+    ALOGD("frames per callback = %d", stream->getFramesPerCallback());
+    if (stream->isXRunCountSupported()) ALOGD("--> xruns = %d", stream->getXRunCount().value());
+}
 
 struct OneWayStreamParams {
   int sampleRate;
@@ -74,6 +146,11 @@ protected:
   OneWayStream(OneWayStreamParams params, oboe::AudioStreamCallback* callback = nullptr) { 
     streamBuilder
       .setSampleRate(params.sampleRate)
+      // Why hard-coding to OpenSL avoiding AAudio?
+      // AAudio stream does not seamlessly continue playback
+      // when connecting or disconnecting headphones or bluetooth speakers.
+      // Ref: https://github.com/google/oboe/issues/823
+      ->setAudioApi(oboe::AudioApi::OpenSLES)
       ->setChannelCount(params.numChannels)
       ->setCallback(callback)
       ->setFramesPerCallback(BLOCKS_PER_CALLBACK * params.hostBlockSize)
@@ -97,24 +174,39 @@ public:
   }
 
   oboe::Result open() override {
-    return streamBuilder
-              .setDirection(getDirection()) 
-              ->openManagedStream(stream);
+    ALOGD("OneWayStream: Open ------");
+
+    auto result = streamBuilder
+                    .setDirection(getDirection())
+                    ->openManagedStream(stream);
+
+    logStreamConfig(stream);
+    return result;
   }
 
   oboe::Result close() override {
+    ALOGD("OneWayStream: close ------");
     return stream->close();
   }
 
   oboe::Result start() override {
+    ALOGD("OneWayStream: start ------");
+
+    logStreamConfig(stream);
     return stream->start();
   }
 
   oboe::Result pause() override {
+    ALOGD("OneWayStream: pause ------");
+
+    logStreamConfig(stream);
     return stream->pause();
   }
 
   oboe::Result stop() override {
+    ALOGD("OneWayStream: stop ------");
+
+    logStreamConfig(stream);
     return stream->stop();
   }
 
@@ -159,6 +251,19 @@ public:
         static_cast<const float *>(audioData),
         0, NULL
     );
+  }
+
+  oboe::Result pause() override {
+    // Why calling stop() instead of pause()?
+    // In AAudio, pause is not implemented for input streams,
+    // it is recommended to use stop instead of pause for input stream.
+    // To be uniform, oboe also enforces this behaviour even for opensl streams.
+    //
+    // What's the difference between pause and stop?
+    // As per AAudio doc,
+    // stop -> "The stream will stop after all of the data currently buffered has been played."
+    // pause -> "Pausing a stream will freeze the data flow but not flush any buffers."
+    return stop();
   }
 
 };
@@ -284,6 +389,7 @@ public:
 OBOE_STREAM *oboe_open(
     int sampleRate, int inChans, int outChans, int hostBlockSize,
     oboe_process_t proc, void *context) {
+    ALOGD("open ----");
 
   if (!proc) {
     return NULL;
@@ -319,12 +425,12 @@ OBOE_STREAM *oboe_open(
 
   auto result = oboeStream->open();
   if (result == oboe::Result::OK) {
-    LOGI("Created OBOE_STREAM(%d, %d, %d, %d)",
+    ALOGI("Created OBOE_STREAM(%d, %d, %d, %d)",
          sampleRate, inChans, outChans, hostBlockSize);
     return oboeStream;
 
   } else {
-    LOGE("Unable to create OBOE_STREAM(%d, %d, %d, %d). Result: %d",
+    ALOGE("Unable to create OBOE_STREAM(%d, %d, %d, %d). Result: %d",
          sampleRate, inChans, outChans, hostBlockSize, result);
     return NULL;
 
@@ -332,11 +438,12 @@ OBOE_STREAM *oboe_open(
 }
 
 void oboe_close(OBOE_STREAM *p) {
+    ALOGD("close ----");
   auto oboeStream = static_cast<OboeStream*>(p);
 
   auto result = oboeStream->close();
   if (result != oboe::Result::OK) {
-    LOGE("Unable to close OBOE_STREAM. Result: %d", result);
+    ALOGE("Unable to close OBOE_STREAM. Result: %d", result);
   }
 
   delete oboeStream;
@@ -349,6 +456,7 @@ int oboe_is_running(OBOE_STREAM *p) {
 }
 
 int oboe_start(OBOE_STREAM *p) {
+  ALOGD("start ----");
   auto oboeStream = static_cast<OboeStream*>(p);
 
   if (oboeStream->isRunning()) {
@@ -365,14 +473,15 @@ int oboe_start(OBOE_STREAM *p) {
 }
 
 void oboe_pause(OBOE_STREAM *p) {
+  ALOGD("pause ----");
   auto oboeStream = static_cast<OboeStream*>(p);
 
   if (!oboeStream->isRunning()) {
     return;
   }
 
-  auto result = oboeStream->pause();
+  auto result = oboeStream->stop();
   if (result != oboe::Result::OK) {
-    LOGE("Unable to pause OBOE_STREAM. Result: %d", result);
+    ALOGE("Unable to pause OBOE_STREAM. Result: %d", result);
   }
 }
